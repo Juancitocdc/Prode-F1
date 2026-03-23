@@ -21,12 +21,10 @@ colores_graficas = {
 # ==========================================
 # 1. CARGA DE DATOS DESDE GOOGLE SHEETS
 # ==========================================
-# Usamos cache para que la web cargue rápido, pero se actualice cada 60 segundos
 @st.cache_data(ttl=60)
 def cargar_datos():
     url_pred = "https://docs.google.com/spreadsheets/d/11gBnVys8KZY3hFZPn4CgYyNxQi-2oi2PrkumdSfq08o/export?format=csv&gid=899122525"
     url_res = "https://docs.google.com/spreadsheets/d/11gBnVys8KZY3hFZPn4CgYyNxQi-2oi2PrkumdSfq08o/export?format=csv&gid=850884406"
-    
     df_p = pd.read_csv(url_pred)
     df_r = pd.read_csv(url_res)
     return df_p, df_r
@@ -56,7 +54,6 @@ if 'Posición Colapinto' in df_res.columns:
     df_res['Posición Colapinto'] = df_res['Posición Colapinto'].astype(str).str.replace('.0', '', regex=False).str.strip().replace('nan', '')
 
 df_res['Fecha Cierre'] = pd.to_datetime(df_res['Fecha Cierre'], dayfirst=True, errors='coerce')
-# NOTA: En Google Forms la columna suele llamarse 'Marca temporal'
 col_fecha = 'Marca temporal' if 'Marca temporal' in df_pred.columns else df_pred.columns[0]
 df_pred[col_fecha] = pd.to_datetime(df_pred[col_fecha], dayfirst=True, errors='coerce')
 
@@ -73,7 +70,7 @@ df_pred['Fuera_de_Plazo'] = df_pred.apply(validar_tiempo, axis=1)
 
 COLUMNA_CORREO = 'Dirección de correo electrónico' if 'Dirección de correo electrónico' in df_pred.columns else 'Correo'
 if COLUMNA_CORREO not in df_pred.columns:
-    COLUMNA_CORREO = df_pred.columns[1] # Respaldo por si cambia el nombre
+    COLUMNA_CORREO = df_pred.columns[1]
 
 if COLUMNA_CORREO in df_pred.columns:
     df_pred[COLUMNA_CORREO] = df_pred[COLUMNA_CORREO].fillna('').astype(str).str.strip()
@@ -164,19 +161,80 @@ with tab1:
     if carreras_disponibles:
         carrera_seleccionada = st.selectbox("Seleccionar Gran Premio:", carreras_disponibles)
         
-        # Filtrar datos de la carrera
+        # Filtrar datos de la carrera para los jugadores
         df_mostrar = df_validas[df_validas['Carrera'] == carrera_seleccionada].copy()
         cols_mostrar = ['Nombre', 'Pole Position'] + columnas_carrera + ['Posición Colapinto', 'Podio Perfecto', 'Puntos Obtenidos']
         df_mostrar = df_mostrar[cols_mostrar].sort_values('Puntos Obtenidos', ascending=False)
         
-        # Resultado oficial
+        # Buscar el Resultado Oficial
         oficial_row = df_res[df_res['Carrera'] == carrera_seleccionada]
+        
+        top10_real = {}
+        oficial_data = pd.Series(dtype=object)
+        
+        # Generar la fila oficial para mostrar
+        fila_oficial = {col: '-' for col in cols_mostrar}
         if not oficial_row.empty:
-            st.success("⭐ Resultados Oficiales Cargados")
-        else:
-            st.warning("⏳ Esperando Resultados Oficiales...")
+            oficial_data = oficial_row.iloc[0]
+            fila_oficial['Nombre'] = '⭐ RESULTADO OFICIAL'
+            for col in cols_mostrar:
+                if col in oficial_data.index:
+                    fila_oficial[col] = oficial_data[col]
             
-        st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+            # Diccionario de posiciones reales para el motor de colores
+            for i, col in enumerate(columnas_carrera, start=1):
+                piloto = oficial_data.get(col)
+                if pd.notna(piloto) and str(piloto).strip() != '-' and str(piloto).strip() != '':
+                    top10_real[piloto] = i
+        else:
+            fila_oficial['Nombre'] = '⏳ ESPERANDO RESULTADOS'
+            
+        fila_oficial['Puntos Obtenidos'] = '-'
+        fila_oficial['Podio Perfecto'] = '-'
+        
+        # Unir la fila oficial arriba de los jugadores
+        df_mostrar = pd.concat([pd.DataFrame([fila_oficial]), df_mostrar], ignore_index=True)
+        
+        # Motor de colores de Streamlit
+        def aplicar_colores(row):
+            styles = [''] * len(row)
+            
+            # Color azulino para la fila oficial
+            if row['Nombre'] == '⭐ RESULTADO OFICIAL' or row['Nombre'] == '⏳ ESPERANDO RESULTADOS':
+                return ['background-color: #e3f2fd; font-weight: bold; color: black;'] * len(row)
+                
+            for i, col in enumerate(row.index):
+                val = row[col]
+                if pd.isna(val) or val == '-':
+                    continue
+                    
+                if not oficial_row.empty:
+                    if col in columnas_carrera:
+                        col_idx = columnas_carrera.index(col) + 1
+                        pos_real = top10_real.get(val)
+                        if pos_real is not None:
+                            dif = abs(col_idx - pos_real)
+                            if dif == 0: styles[i] = 'background-color: #c8e6c9; color: black;' # Verde exacto
+                            elif dif == 1: styles[i] = 'background-color: #fff9c4; color: black;' # Amarillo cerca
+                            # Blanco para el resto que está en puntos
+                        else:
+                            styles[i] = 'background-color: #ffcdd2; color: black;' # Rojo out
+                    elif col in ['Pole Position', 'Posición Colapinto']:
+                        if str(val) == str(oficial_data.get(col)): styles[i] = 'background-color: #c8e6c9; color: black;'
+                        else: styles[i] = 'background-color: #ffcdd2; color: black;'
+                    elif col == 'Podio Perfecto':
+                        if val == 'Sí': styles[i] = 'background-color: #c8e6c9; font-weight: bold; color: #2e7d32;'
+                        elif val == 'No': styles[i] = 'color: #b71c1c;'
+                        
+                # Resaltar la columna de puntos finales siempre
+                if col == 'Puntos Obtenidos':
+                    styles[i] = 'background-color: #f0f0f0; font-weight: bold; color: black;'
+                    
+            return styles
+
+        # Aplicamos los estilos a la tabla
+        df_estilizado = df_mostrar.style.apply(aplicar_colores, axis=1)
+        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
         
         st.divider()
         st.header("🏆 Campeonato General Acumulado")
@@ -201,14 +259,12 @@ with tab2:
                 if k in nombre or nombre in k: return v
             return '#000000'
 
-        # Gráfico 1: Puntos por Fecha
         fig1 = go.Figure()
         for jugador in df_puntos_carrera.index:
             fig1.add_trace(go.Scatter(x=df_puntos_carrera.columns, y=df_puntos_carrera.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
         fig1.update_layout(title="Puntos Obtenidos por Fecha (Individual)", xaxis_title="Gran Premio", yaxis_title="Puntos")
         st.plotly_chart(fig1, use_container_width=True)
 
-        # Gráfico 2: Acumulado Total
         fig2 = go.Figure()
         for jugador in df_acumulados.index:
             fig2.add_trace(go.Scatter(x=df_acumulados.columns, y=df_acumulados.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
