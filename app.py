@@ -110,7 +110,7 @@ def calcular_puntos(row, df_resultados):
     
     resultado_oficial = resultado_oficial.iloc[0]
     puntos_jugador = 0
-    top10_real = {resultado_oficial.get(col): i for i, col in enumerate(columnas_carrera, start=1) if pd.notna(resultado_oficial.get(col)) and resultado_oficial.get(col) != '-'}
+    top10_real = {resultado_oficial.get(col): i for i, col in enumerate(columnas_carrera, start=1) if pd.notna(resultado_oficial.get(col)) and str(resultado_oficial.get(col)).strip() != '-'}
             
     for i, col in enumerate(columnas_carrera, start=1):
         pred = row.get(col)
@@ -126,7 +126,7 @@ def calcular_puntos(row, df_resultados):
         puntos_jugador += PUNTOS_COLAPINTO
     if (pd.notna(row.get('Ganador')) and row.get('Ganador') == resultado_oficial.get('Ganador') and
         pd.notna(row.get('Segundo (2do)')) and row.get('Segundo (2do)') == resultado_oficial.get('Segundo (2do)') and
-        pd.notna(row.get('Tercero (3ro)')) and row.get('Tercero (3ro)') == resultado_oficial.get('Tercero (3ro)')) and (resultado_oficial.get('Ganador') != '-'):
+        pd.notna(row.get('Tercero (3ro)')) and row.get('Tercero (3ro)') == resultado_oficial.get('Tercero (3ro)')) and (str(resultado_oficial.get('Ganador')).strip() != '-'):
         puntos_jugador += PUNTOS_PODIO_PERFECTO
 
     return puntos_jugador
@@ -136,7 +136,7 @@ def evaluar_podio_perfecto(row, df_resultados):
     resultado_oficial = df_resultados[df_resultados['Carrera'] == carrera_actual]
     if resultado_oficial.empty: return '-' 
     resultado_oficial = resultado_oficial.iloc[0]
-    if pd.isna(resultado_oficial.get('Ganador')) or resultado_oficial.get('Ganador') == '-': return '-'
+    if pd.isna(resultado_oficial.get('Ganador')) or str(resultado_oficial.get('Ganador')).strip() == '-': return '-'
     if (pd.notna(row.get('Ganador')) and row.get('Ganador') == resultado_oficial.get('Ganador') and
         pd.notna(row.get('Segundo (2do)')) and row.get('Segundo (2do)') == resultado_oficial.get('Segundo (2do)') and
         pd.notna(row.get('Tercero (3ro)')) and row.get('Tercero (3ro)') == resultado_oficial.get('Tercero (3ro)')):
@@ -161,18 +161,15 @@ with tab1:
     if carreras_disponibles:
         carrera_seleccionada = st.selectbox("Seleccionar Gran Premio:", carreras_disponibles)
         
-        # Filtrar datos de la carrera para los jugadores
         df_mostrar = df_validas[df_validas['Carrera'] == carrera_seleccionada].copy()
         cols_mostrar = ['Nombre', 'Pole Position'] + columnas_carrera + ['Posición Colapinto', 'Podio Perfecto', 'Puntos Obtenidos']
         df_mostrar = df_mostrar[cols_mostrar].sort_values('Puntos Obtenidos', ascending=False)
         
-        # Buscar el Resultado Oficial
         oficial_row = df_res[df_res['Carrera'] == carrera_seleccionada]
         
         top10_real = {}
         oficial_data = pd.Series(dtype=object)
         
-        # Generar la fila oficial para mostrar
         fila_oficial = {col: '-' for col in cols_mostrar}
         if not oficial_row.empty:
             oficial_data = oficial_row.iloc[0]
@@ -181,7 +178,6 @@ with tab1:
                 if col in oficial_data.index:
                     fila_oficial[col] = oficial_data[col]
             
-            # Diccionario de posiciones reales para el motor de colores
             for i, col in enumerate(columnas_carrera, start=1):
                 piloto = oficial_data.get(col)
                 if pd.notna(piloto) and str(piloto).strip() != '-' and str(piloto).strip() != '':
@@ -192,14 +188,10 @@ with tab1:
         fila_oficial['Puntos Obtenidos'] = '-'
         fila_oficial['Podio Perfecto'] = '-'
         
-        # Unir la fila oficial arriba de los jugadores
         df_mostrar = pd.concat([pd.DataFrame([fila_oficial]), df_mostrar], ignore_index=True)
         
-        # Motor de colores de Streamlit
         def aplicar_colores(row):
             styles = [''] * len(row)
-            
-            # Color azulino para la fila oficial
             if row['Nombre'] == '⭐ RESULTADO OFICIAL' or row['Nombre'] == '⏳ ESPERANDO RESULTADOS':
                 return ['background-color: #e3f2fd; font-weight: bold; color: black;'] * len(row)
                 
@@ -214,11 +206,10 @@ with tab1:
                         pos_real = top10_real.get(val)
                         if pos_real is not None:
                             dif = abs(col_idx - pos_real)
-                            if dif == 0: styles[i] = 'background-color: #c8e6c9; color: black;' # Verde exacto
-                            elif dif == 1: styles[i] = 'background-color: #fff9c4; color: black;' # Amarillo cerca
-                            # Blanco para el resto que está en puntos
+                            if dif == 0: styles[i] = 'background-color: #c8e6c9; color: black;' 
+                            elif dif == 1: styles[i] = 'background-color: #fff9c4; color: black;' 
                         else:
-                            styles[i] = 'background-color: #ffcdd2; color: black;' # Rojo out
+                            styles[i] = 'background-color: #ffcdd2; color: black;' 
                     elif col in ['Pole Position', 'Posición Colapinto']:
                         if str(val) == str(oficial_data.get(col)): styles[i] = 'background-color: #c8e6c9; color: black;'
                         else: styles[i] = 'background-color: #ffcdd2; color: black;'
@@ -226,13 +217,11 @@ with tab1:
                         if val == 'Sí': styles[i] = 'background-color: #c8e6c9; font-weight: bold; color: #2e7d32;'
                         elif val == 'No': styles[i] = 'color: #b71c1c;'
                         
-                # Resaltar la columna de puntos finales siempre
                 if col == 'Puntos Obtenidos':
                     styles[i] = 'background-color: #f0f0f0; font-weight: bold; color: black;'
                     
             return styles
 
-        # Aplicamos los estilos a la tabla
         df_estilizado = df_mostrar.style.apply(aplicar_colores, axis=1)
         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
         
@@ -259,17 +248,51 @@ with tab2:
                 if k in nombre or nombre in k: return v
             return '#000000'
 
+        # --- Gráfico 1: Puntos por Carrera ---
+        st.subheader("1. Puntos Obtenidos por Fecha (Individual)")
         fig1 = go.Figure()
         for jugador in df_puntos_carrera.index:
             fig1.add_trace(go.Scatter(x=df_puntos_carrera.columns, y=df_puntos_carrera.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
-        fig1.update_layout(title="Puntos Obtenidos por Fecha (Individual)", xaxis_title="Gran Premio", yaxis_title="Puntos")
+        fig1.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos")
         st.plotly_chart(fig1, use_container_width=True)
+
+        st.divider()
+
+        # --- Gráfico 2: Evolución Filtrada ---
+        st.subheader("2. Evolución del Campeonato (Filtrada)")
+        
+        # Filtros de carrera en columnas
+        col1, col2 = st.columns(2)
+        with col1:
+            carrera_inicio = st.selectbox("Desde:", carreras_disponibles, index=0)
+        with col2:
+            carrera_fin = st.selectbox("Hasta:", carreras_disponibles, index=len(carreras_disponibles)-1)
+
+        idx_inicio = carreras_disponibles.index(carrera_inicio)
+        idx_fin = carreras_disponibles.index(carrera_fin)
+        
+        # Validar si ponen la fecha de fin antes que la de inicio
+        if idx_inicio > idx_fin:
+            idx_inicio, idx_fin = idx_fin, idx_inicio
+            
+        carreras_filtradas = carreras_disponibles[idx_inicio:idx_fin+1]
 
         fig2 = go.Figure()
         for jugador in df_acumulados.index:
-            fig2.add_trace(go.Scatter(x=df_acumulados.columns, y=df_acumulados.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
-        fig2.update_layout(title="Evolución del Campeonato (Acumulado Histórico)", xaxis_title="Gran Premio", yaxis_title="Puntos Totales")
+            y_data = df_acumulados.loc[jugador, carreras_filtradas]
+            fig2.add_trace(go.Scatter(x=carreras_filtradas, y=y_data, mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
+        fig2.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos Acumulados")
         st.plotly_chart(fig2, use_container_width=True)
+
+        st.divider()
+
+        # --- Gráfico 3: Total Acumulado ---
+        st.subheader("3. Evolución del Campeonato (Total Histórico)")
+        fig3 = go.Figure()
+        for jugador in df_acumulados.index:
+            fig3.add_trace(go.Scatter(x=df_acumulados.columns, y=df_acumulados.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColor(jugador), width=3)))
+        fig3.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos Totales")
+        st.plotly_chart(fig3, use_container_width=True)
     else:
         st.info("Faltan datos para generar las gráficas.")
 
