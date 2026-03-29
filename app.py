@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Prode F1", page_icon="🏆", layout="wide")
 st.title("🏆 Prode F1 Mundial")
 
-PUNTOS_POLE = 2
-PUNTOS_COLAPINTO = 2
+PUNTOS_POLE = 3
+PUNTOS_COLAPINTO = 3
 PUNTOS_PODIO_PERFECTO = 3
 
 colores_graficas = {
