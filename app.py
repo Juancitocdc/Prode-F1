@@ -1,19 +1,90 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import datetime
+import urllib.request
+import re
 
 # ==========================================
 # 0. CONFIGURACIÓN DE LA PÁGINA Y ESTILOS
 # ==========================================
 st.set_page_config(page_title="Prode F1", page_icon="🏆", layout="wide")
 
-# CSS personalizado para recrear la tabla HTML compacta original
+# CSS personalizado basado en la interfaz "Pit Wall Command"
 st.markdown("""
     <style>
-    .styled-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; text-align: center; font-family: 'Segoe UI', Arial, sans-serif; background-color: white;}
-    .styled-table th { background-color: #222; color: white; padding: 10px 4px; font-weight: 600; text-align: center; vertical-align: middle; line-height: 1.2;}
-    .styled-table td { padding: 8px 4px; border-bottom: 1px solid #eee; vertical-align: middle; color: #111;}
-    .styled-table tr:hover { background-color: #f9f9f9; }
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    /* Fondo principal con textura Fibra de Carbono y color de texto base */
+    .stApp {
+        background-color: #0d0d0d;
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiIHZpZXdCb3g9IjAgMCA0IDQiPjxyZWN0IHdpZHRoPSIyIiBoZWlnaHQ9IjIiIGZpbGw9IiNmZmZmZmYwNSIvPjwvc3ZnPg==');
+        background-repeat: repeat;
+        color: #e0e0e0;
+    }
+    
+    /* Tipografías para Títulos */
+    h1 {
+        font-family: 'Barlow Condensed', sans-serif !important;
+        font-size: 42px !important;
+        color: #ff1e1e !important;
+        text-transform: uppercase;
+        font-style: italic;
+        letter-spacing: -0.02em;
+    }
+    h2, h3 {
+        font-family: 'Barlow Condensed', sans-serif !important;
+        color: #ffffff !important;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    /* Estilo de la Tabla Principal (Glass Panel) */
+    .styled-table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-top: 15px; 
+        font-size: 14px; 
+        text-align: center; 
+        font-family: 'JetBrains Mono', monospace; 
+        background-color: #141414;
+        border: 1px solid #262626;
+        border-radius: 4px;
+    }
+    .styled-table th { 
+        background-color: #1a1a1a; 
+        color: #00f2ff; 
+        padding: 12px 4px; 
+        font-weight: 600; 
+        text-align: center; 
+        text-transform: uppercase;
+        border-bottom: 1px solid #262626;
+        font-size: 12px;
+        letter-spacing: 0.05em;
+    }
+    .styled-table td { 
+        padding: 10px 4px; 
+        border-bottom: 1px solid #262626; 
+        color: #e0e0e0;
+        vertical-align: middle;
+    }
+    .styled-table tr:hover { 
+        background-color: #1a1a1a; 
+    }
+    
+    /* Personalización de los Tabs (Pestañas) */
+    .stTabs [data-baseweb="tab-list"] { background-color: transparent; }
+    .stTabs [data-baseweb="tab"] { 
+        font-family: 'JetBrains Mono', monospace; 
+        color: #8c8c8c; 
+        text-transform: uppercase;
+        font-size: 14px;
+    }
+    .stTabs [aria-selected="true"] { 
+        color: #00f2ff !important; 
+        border-bottom-color: #00f2ff !important; 
+        font-weight: bold;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -30,11 +101,11 @@ colores_graficas = {
     "Matias": "#B6BABD", "Ochoa": "#52E252"
 }
 
-# Colores con opacidad al 30% (Agregando 4D al HEX) para fondos de celdas legibles
+# Colores con opacidad
 colores_celdas = {
-    "Juan": "#E800204D", "Lencioni": "#3671C64D", "Santoni": "#27F4D24D",
-    "Facu": "#FF87004D", "Cristian": "#2299714D", "Jota": "#0093CC4D",
-    "Matias": "#B6BABD4D", "Ochoa": "#52E2524D"
+    "Juan": "#E8002033", "Lencioni": "#3671C633", "Santoni": "#27F4D233",
+    "Facu": "#FF870033", "Cristian": "#22997133", "Jota": "#0093CC33",
+    "Matias": "#B6BABD33", "Ochoa": "#52E25233"
 }
 
 # ==========================================
@@ -165,35 +236,29 @@ if not df_validas.empty:
 # ==========================================
 # 4. INTERFAZ GRÁFICA Y GENERACIÓN HTML
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📊 Resultados y Puntos", "📈 Gráficas y Evolución", "🚨 Auditoría / VAR"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏁 RESULTADOS", "📈 GRAFICAS", "🚨 VAR", "📅 CALENDARIO"])
 
 carreras_iniciales = ['Australia', 'China | Sprint', 'China', 'Japón', 'Bahréin', 'Arabia Saudita', 'Miami | Sprint', 'Miami', 'Canada | Sprint', 'Canada', 'Monaco', 'Barcelona', 'Austria', 'Reino Unido | Sprint', 'Reino Unido', 'Bélgica', 'Hungría', 'Paises Bajos | Sprint', 'Paises Bajos', 'Italia', 'Madrid', 'Azerbaijan', 'Singapur | Sprint', 'Singapur', 'Austin', 'México', 'Brasil', 'Qatar', 'Abu Dhabi']
 carreras_disponibles = [c for c in carreras_iniciales if c in df_validas['Carrera'].unique()]
 
-# Función para obtener color de celda (Opaco)
 def getBgColor(nombre):
     for k, v in colores_celdas.items():
         if k in str(nombre) or str(nombre) in k: return v
     return ''
 
-# Renombrar columnas para forzar el salto de línea (HTML <br>)
 renames = {
-    'Segundo (2do)': 'Segundo<br>(2do)', 'Tercero (3ro)': 'Tercero<br>(3ro)',
-    'Cuarto (4to)': 'Cuarto<br>(4to)', 'Quinto (5to)': 'Quinto<br>(5to)',
-    'Sexto (6to)': 'Sexto<br>(6to)', 'Septimo (7mo)': 'Septimo<br>(7mo)',
-    'Octavo (8vo)': 'Octavo<br>(8vo)', 'Noveno (9no)': 'Noveno<br>(9no)',
-    'Decimo (10mo)': 'Decimo<br>(10mo)', 'Posición Colapinto': 'Posición<br>Colapinto',
-    'Podio Perfecto': 'Podio<br>Perfecto', 'Puntos_Obtenidos': 'Puntos<br>Totales'
+    'Segundo (2do)': 'P 2', 'Tercero (3ro)': 'P 3', 'Cuarto (4to)': 'P 4', 'Quinto (5to)': 'P 5',
+    'Sexto (6to)': 'P 6', 'Septimo (7mo)': 'P 7', 'Octavo (8vo)': 'P 8', 'Noveno (9no)': 'P 9',
+    'Decimo (10mo)': 'P 10', 'Posición Colapinto': 'Colapinto',
+    'Podio Perfecto': 'Podio<br>Perf.', 'Puntos_Obtenidos': 'Total<br>PTS'
 }
-
 columnas_carrera_html = [renames.get(c, c) for c in columnas_carrera]
 
 # --- HOJA 1: RESULTADOS ---
 with tab1:
-    st.header("🏁 Puntos por Fecha")
+    st.header("🏁 PUNTOS POR FECHA")
     if carreras_disponibles:
         carrera_seleccionada = st.selectbox("Seleccionar Gran Premio:", carreras_disponibles)
-        
         df_mostrar = df_validas[df_validas['Carrera'] == carrera_seleccionada].copy()
         cols_mostrar_orig = ['Nombre', 'Pole Position'] + columnas_carrera + ['Posición Colapinto', 'Podio Perfecto', 'Puntos_Obtenidos']
         df_mostrar = df_mostrar[cols_mostrar_orig].sort_values('Puntos_Obtenidos', ascending=False)
@@ -209,7 +274,6 @@ with tab1:
             for col in cols_mostrar_orig:
                 if col in oficial_data.index:
                     fila_oficial[col] = oficial_data[col]
-            
             for i, col in enumerate(columnas_carrera, start=1):
                 piloto = oficial_data.get(col)
                 if pd.notna(piloto) and str(piloto).strip() != '-' and str(piloto).strip() != '':
@@ -223,48 +287,38 @@ with tab1:
         df_mostrar = pd.concat([pd.DataFrame([fila_oficial]), df_mostrar], ignore_index=True)
         df_mostrar = df_mostrar.rename(columns=renames)
         
-        # Motor de colores
         def aplicar_colores(row):
             styles = [''] * len(row)
             if 'OFICIAL' in row['Nombre'] or 'ESPERANDO' in row['Nombre']:
-                return ['background-color: #e3f2fd; font-weight: bold; color: #111;'] * len(row)
-                
+                return ['background-color: #1a1a1a; font-weight: bold; color: #ffffff; border-bottom: 2px solid #00f2ff;'] * len(row)
             for i, col in enumerate(row.index):
                 val = row[col]
-                
-                # Pintar el Nombre con la Escudería
                 if col == 'Nombre':
                     bg = getBgColor(val)
-                    if bg: styles[i] = f'background-color: {bg}; font-weight: bold; color: #111;'
+                    if bg: styles[i] = f'background-color: {bg}; font-weight: bold; color: #ffffff;'
                     continue
-                
                 if pd.isna(val) or val == '-': continue
-                    
                 if not oficial_row.empty:
                     if col in columnas_carrera_html:
-                        # Buscar indice original
                         orig_col = [k for k, v in renames.items() if v == col]
                         orig_col = orig_col[0] if orig_col else col
                         col_idx = columnas_carrera.index(orig_col) + 1
-                        
                         pos_real = top10_real.get(val)
                         if pos_real is not None:
                             dif = abs(col_idx - pos_real)
-                            if dif == 0: styles[i] = 'background-color: #c8e6c9; color: #111;' 
-                            elif dif == 1: styles[i] = 'background-color: #fff9c4; color: #111;' 
+                            if dif == 0: styles[i] = 'background-color: rgba(0, 255, 136, 0.15); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3);' 
+                            elif dif == 1: styles[i] = 'background-color: rgba(255, 204, 0, 0.15); color: #ffcc00; border: 1px solid rgba(255, 204, 0, 0.3);' 
                         else:
-                            styles[i] = 'background-color: #ffcdd2; color: #111;' 
-                    elif col in ['Pole Position', 'Posición<br>Colapinto']:
+                            styles[i] = 'background-color: rgba(255, 51, 51, 0.15); color: #ff3333; border: 1px solid rgba(255, 51, 51, 0.3);' 
+                    elif col in ['Pole Position', 'Colapinto']:
                         orig_col = 'Posición Colapinto' if 'Colapinto' in col else 'Pole Position'
-                        if str(val) == str(oficial_data.get(orig_col)): styles[i] = 'background-color: #c8e6c9; color: #111;'
-                        else: styles[i] = 'background-color: #ffcdd2; color: #111;'
-                    elif col == 'Podio<br>Perfecto':
-                        if val == 'Sí': styles[i] = 'background-color: #c8e6c9; font-weight: bold; color: #2e7d32;'
-                        elif val == 'No': styles[i] = 'color: #b71c1c;'
-                        
-                if col == 'Puntos<br>Totales':
-                    styles[i] = 'background-color: #f0f0f0; font-weight: bold; color: #111; font-size: 16px;'
-                    
+                        if str(val) == str(oficial_data.get(orig_col)): styles[i] = 'background-color: rgba(0, 255, 136, 0.15); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3);'
+                        else: styles[i] = 'background-color: rgba(255, 51, 51, 0.15); color: #ff3333; border: 1px solid rgba(255, 51, 51, 0.3);'
+                    elif col == 'Podio<br>Perf.':
+                        if val == 'Sí': styles[i] = 'background-color: rgba(0, 255, 136, 0.15); font-weight: bold; color: #00ff88;'
+                        elif val == 'No': styles[i] = 'color: #ff3333;'
+                if col == 'Total<br>PTS':
+                    styles[i] = 'background-color: #1a1a1a; font-weight: bold; color: #00f2ff; font-size: 16px; border-left: 1px solid #262626;'
             return styles
 
         df_estilizado = df_mostrar.style.apply(aplicar_colores, axis=1).hide(axis="index")
@@ -272,7 +326,7 @@ with tab1:
         st.markdown(html_tabla_1, unsafe_allow_html=True)
         
         st.divider()
-        st.header("🏆 Campeonato General Acumulado")
+        st.header("🏆 DRIVERS STANDING (ACUMULADO)")
         df_puntos_carrera = df_validas.pivot_table(index='Nombre', columns='Carrera', values='Puntos_Obtenidos', aggfunc='sum', fill_value=0)
         df_puntos_carrera = df_puntos_carrera[[c for c in carreras_iniciales if c in df_puntos_carrera.columns]]
         df_puntos_carrera['TOTAL ACUMULADO'] = df_puntos_carrera.sum(axis=1)
@@ -283,9 +337,9 @@ with tab1:
             for i, col in enumerate(row.index):
                 if col == 'Nombre':
                     bg = getBgColor(row['Nombre'])
-                    if bg: styles[i] = f'background-color: {bg}; font-weight: bold; color: #111;'
+                    if bg: styles[i] = f'background-color: {bg}; font-weight: bold; color: #ffffff;'
                 elif col == 'TOTAL ACUMULADO':
-                    styles[i] = 'background-color: #222; font-weight: bold; color: white; font-size: 16px;'
+                    styles[i] = 'background-color: #1a1a1a; font-weight: bold; color: #00f2ff; font-size: 16px;'
             return styles
             
         df_acum_estilizado = df_puntos_carrera.style.apply(aplicar_colores_acumulado, axis=1).hide(axis="index")
@@ -297,7 +351,7 @@ with tab1:
 
 # --- HOJA 2: GRÁFICAS ---
 with tab2:
-    st.header("📈 Análisis del Campeonato")
+    st.header("📈 Graficas")
     if not df_validas.empty and len(carreras_disponibles) > 0:
         df_puntos_carrera = df_validas.pivot_table(index='Nombre', columns='Carrera', values='Puntos_Obtenidos', aggfunc='sum', fill_value=0)
         df_puntos_carrera = df_puntos_carrera[[c for c in carreras_iniciales if c in df_puntos_carrera.columns]]
@@ -306,18 +360,25 @@ with tab2:
         def getColorLine(nombre):
             for k, v in colores_graficas.items():
                 if k in nombre or nombre in k: return v
-            return '#000000'
+            return '#e0e0e0'
 
-        st.subheader("1. Puntos Obtenidos por Fecha (Individual)")
+        layout_dark = dict(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#8c8c8c', family='JetBrains Mono'),
+            xaxis=dict(showgrid=True, gridcolor='#262626'),
+            yaxis=dict(showgrid=True, gridcolor='#262626')
+        )
+
+        st.subheader("1. Puntos por Fecha (Individual)")
         fig1 = go.Figure()
         for jugador in df_puntos_carrera.index:
             fig1.add_trace(go.Scatter(x=df_puntos_carrera.columns, y=df_puntos_carrera.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColorLine(jugador), width=3)))
-        fig1.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos")
-        st.plotly_chart(fig1, use_container_width=True)
+        fig1.update_layout(**layout_dark)
+        st.plotly_chart(fig1, use_container_width=True, key="grafico_1")
 
         st.divider()
-
-        st.subheader("2. Evolución del Campeonato (Filtrada)")
+        st.subheader("2. Campeonato Filtrado")
         col1, col2 = st.columns(2)
         with col1: carrera_inicio = st.selectbox("Desde:", carreras_disponibles, index=0)
         with col2: carrera_fin = st.selectbox("Hasta:", carreras_disponibles, index=len(carreras_disponibles)-1)
@@ -331,26 +392,93 @@ with tab2:
         for jugador in df_acumulados.index:
             y_data = df_acumulados.loc[jugador, carreras_filtradas]
             fig2.add_trace(go.Scatter(x=carreras_filtradas, y=y_data, mode='lines+markers', name=jugador, line=dict(color=getColorLine(jugador), width=3)))
-        fig2.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos Acumulados")
-        st.plotly_chart(fig2, use_container_width=True)
+        fig2.update_layout(**layout_dark)
+        st.plotly_chart(fig2, use_container_width=True, key="grafico_2")
 
         st.divider()
-
-        st.subheader("3. Evolución del Campeonato (Total Histórico)")
+        st.subheader("3. Total Histórico")
         fig3 = go.Figure()
         for jugador in df_acumulados.index:
             fig3.add_trace(go.Scatter(x=df_acumulados.columns, y=df_acumulados.loc[jugador], mode='lines+markers', name=jugador, line=dict(color=getColorLine(jugador), width=3)))
-        fig3.update_layout(xaxis_title="Gran Premio", yaxis_title="Puntos Totales")
-        st.plotly_chart(fig3, use_container_width=True)
+        fig3.update_layout(**layout_dark)
+        st.plotly_chart(fig3, use_container_width=True, key="grafico_3")
     else:
         st.info("Faltan datos para generar las gráficas.")
 
 # --- HOJA 3: VAR ---
 with tab3:
-    st.header("🚨 El VAR del Prode")
+    st.header("🚨 VAR CONTROL ROOM")
     if not df_rechazados.empty:
         st.error("Las siguientes predicciones fueron anuladas:")
         cols_var = [col_fecha, 'Nombre', COLUMNA_CORREO, 'Carrera', 'Estado_VAR']
         st.dataframe(df_rechazados[cols_var].sort_values(col_fecha, ascending=False), use_container_width=True, hide_index=True)
     else:
-        st.success("✅ No hay predicciones rechazadas. ¡Todos jugaron limpio por ahora!")
+        st.success("✅ No hay predicciones rechazadas. Todos en regla.")
+
+# --- HOJA 4: CALENDARIO EN VIVO (CORREGIDO PARA 2026) ---
+with tab4:
+    st.header("📅 CALENDARIO OFICIAL F1")
+    
+    @st.cache_data(ttl=3600)
+    def obtener_calendario_f1():
+        url = "https://ics.ecal.com/ecal-sub/6a12e5911ae22c0002d2636a/Formula%201.ics"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as respuesta:
+            datos = respuesta.read().decode('utf-8')
+            
+        eventos = []
+        for bloque in datos.split('BEGIN:VEVENT')[1:]:
+            # Extraer SUMMARY y DTSTART usando expresiones regulares
+            summary_match = re.search(r'SUMMARY:(.*)', bloque)
+            dtstart_match = re.search(r'DTSTART:(\d{8}T\d{6}Z)', bloque)
+            
+            if summary_match and dtstart_match:
+                fecha_str = dtstart_match.group(1)
+                try:
+                    dt = datetime.datetime.strptime(fecha_str, "%Y%m%dT%H%M%SZ")
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                    eventos.append({'SUMMARY': summary_match.group(1).strip(), 'DTSTART': dt})
+                except:
+                    continue
+        return sorted(eventos, key=lambda x: x['DTSTART'])
+
+    calendario_oficial = obtener_calendario_f1()
+    ahora_utc = datetime.datetime.now(datetime.timezone.utc)
+    tz_arg = datetime.timezone(datetime.timedelta(hours=-3))
+    
+    proximos_eventos = [e for e in calendario_oficial if e['DTSTART'] > ahora_utc]
+    
+    if proximos_eventos:
+        siguiente = proximos_eventos[0]
+        faltan = siguiente["DTSTART"] - ahora_utc
+        dias = faltan.days
+        horas = faltan.seconds // 3600
+        minutos = (faltan.seconds % 3600) // 60
+        
+        st.markdown(f'''
+        <div style="background-color: #141414; padding: 25px; border-radius: 4px; border: 1px solid #262626; border-left: 4px solid #00f2ff; text-align: center; margin-bottom: 30px;">
+            <p style="color: #00f2ff; margin:0; font-family: 'JetBrains Mono', monospace; font-size: 14px; letter-spacing: 2px; text-transform: uppercase;">PRÓXIMA SESIÓN • {siguiente['SUMMARY']}</p>
+            <h1 style="color: #ffffff; margin:10px 0 0 0; font-size: 56px; font-family: 'Barlow Condensed', sans-serif; font-style: italic; line-height: 1;">
+                {dias}D {horas}H {minutos}M
+            </h1>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        st.markdown('''
+        <a href="webcal://ics.ecal.com/ecal-sub/6a12e5911ae22c0002d2636a/Formula%201.ics" target="_blank" style="display: block; width: 100%; background-color: #ff1e1e; color: white; text-align: center; padding: 12px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 16px; text-decoration: none; text-transform: uppercase; margin-bottom: 40px; border-bottom: 3px solid #cc0000; transition: 0.3s;">
+            🔗 SINCRONIZAR CALENDARIO (iOS / ANDROID)
+        </a>
+        ''', unsafe_allow_html=True)
+        
+        st.subheader("🏁 Cronograma Completo (Hora Argentina)")
+        
+        for c in proximos_eventos[:15]:
+            fecha_arg = c["DTSTART"].astimezone(tz_arg)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"<span style='font-family: JetBrains Mono; color: {'#00f2ff' if 'Race' in c['SUMMARY'] else '#e0e0e0'}; font-size: 15px;'>{c['SUMMARY']}</span>", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"<span style='font-family: JetBrains Mono; color: #8c8c8c; text-align: right; display: block;'>{fecha_arg.strftime('%d/%m %H:%M')}</span>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 8px 0; border-color: #262626;'>", unsafe_allow_html=True)
+    else:
+        st.info("No se detectaron sesiones futuras en el calendario oficial.")
